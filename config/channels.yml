@@ -1,0 +1,14 @@
+channels:
+  - name: "target_channel"
+    url: "https://www.youtube.com/@example"
+
+settings:
+  output_txt: "data/output/notebooklm_urls.txt"
+  output_csv: "data/output/notebooklm_urls.csv"
+  debug_csv: "data/debug/notebooklm_urls_debug.csv"
+  exclude_shorts: true
+  shorts_duration_threshold_sec: 180
+  include_active_live: true
+  include_upcoming_live: true
+  max_pages: null
+  max_items: null
