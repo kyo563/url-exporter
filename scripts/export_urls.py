@@ -27,6 +27,10 @@ def error(message: str) -> None:
     print(f"[ERROR] {message}")
 
 
+def warn(message: str) -> None:
+    print(f"[WARN] {message}")
+
+
 def chunked(items: list[str], size: int) -> list[list[str]]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
@@ -72,6 +76,16 @@ def parse_channels(config: dict) -> tuple[list[ChannelConfig], str | None]:
     return channels, None
 
 
+def should_abort_before_write(had_api_error: bool, included_count: int, fail_on_partial_api_error: bool) -> bool:
+    if had_api_error and included_count == 0:
+        return True
+    return had_api_error and fail_on_partial_api_error
+
+
+def get_fail_on_partial_api_error(settings: dict) -> bool:
+    return bool(settings.get("fail_on_partial_api_error", True))
+
+
 def main() -> int:
     info("Start export")
     config_path = "config/channels.yml"
@@ -100,6 +114,7 @@ def main() -> int:
     exclude_shorts = bool(settings.get("exclude_shorts", True))
     include_active_live = bool(settings.get("include_active_live", True))
     include_upcoming_live = bool(settings.get("include_upcoming_live", True))
+    fail_on_partial_api_error = get_fail_on_partial_api_error(settings)
     max_pages = settings.get("max_pages")
     max_items = settings.get("max_items")
 
@@ -244,9 +259,18 @@ def main() -> int:
     info(f"Included URLs: {included_count}")
     info(f"Excluded videos: {excluded_count}")
 
-    if had_api_error and included_count == 0:
-        error("Export failed: API error occurred and no URLs were collected.")
+    if should_abort_before_write(
+        had_api_error=had_api_error,
+        included_count=included_count,
+        fail_on_partial_api_error=fail_on_partial_api_error,
+    ):
+        if included_count == 0:
+            error("Export failed: API error occurred and no URLs were collected.")
+        else:
+            error("Export aborted: API error occurred during export and fail_on_partial_api_error is enabled. Existing output files were not overwritten.")
         return 1
+    if had_api_error and not fail_on_partial_api_error:
+        warn("API error occurred, but fail_on_partial_api_error is disabled. Partial outputs will be written.")
 
     out_txt = settings.get("output_txt", "data/output/notebooklm_urls.txt")
     out_csv = settings.get("output_csv", "data/output/notebooklm_urls.csv")

@@ -1,4 +1,4 @@
-from scripts.export_urls import parse_channels
+from scripts.export_urls import get_fail_on_partial_api_error, parse_channels
 
 
 def test_parse_channels_empty_yaml() -> None:
@@ -23,3 +23,11 @@ def test_parse_channels_missing_url() -> None:
     channels, err = parse_channels({"channels": [{"name": "a"}]})
     assert channels == []
     assert "url" in (err or "")
+
+
+def test_fail_on_partial_api_error_default_true() -> None:
+    assert get_fail_on_partial_api_error({}) is True
+
+
+def test_fail_on_partial_api_error_can_be_false() -> None:
+    assert get_fail_on_partial_api_error({"fail_on_partial_api_error": False}) is False
