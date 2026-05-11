@@ -54,6 +54,13 @@ export YOUTUBE_API_KEY="YOUR_API_KEY"
 python -m scripts.export_urls
 ```
 
+
+## 初回実行手順
+1. `YOUTUBE_API_KEY` を GitHub Secrets に設定する。
+2. `config/channels.yml` を実チャンネルURLに変更する。
+3. GitHub Actions から手動実行する。
+4. `data/output/notebooklm_urls.txt` を確認する。
+
 ## GitHub Actions手動実行
 1. GitHubの **Actions** タブを開く。
 2. `Export YouTube URLs` を選ぶ。

@@ -7,6 +7,7 @@ def should_include_video(
     shorts_duration_threshold_sec: int,
     include_active_live: bool,
     include_upcoming_live: bool,
+    exclude_shorts: bool = True,
 ) -> tuple[bool, str]:
     live_state = (live_broadcast_content or "none").lower()
 
@@ -18,7 +19,7 @@ def should_include_video(
     if duration_sec is None:
         return False, "duration_missing"
 
-    if duration_sec <= shorts_duration_threshold_sec:
+    if exclude_shorts and duration_sec <= shorts_duration_threshold_sec:
         return False, "short_like_duration"
 
     return True, ""

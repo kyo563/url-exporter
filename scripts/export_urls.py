@@ -33,7 +33,43 @@ def chunked(items: list[str], size: int) -> list[list[str]]:
 
 def load_config(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return yaml.safe_load(f) or {}
+
+
+def is_fatal_api_error(e: YouTubeApiError) -> bool:
+    text = (e.response_text or "").lower()
+    if e.status_code in {401, 403}:
+        return True
+    fatal_keywords = [
+        "invalid api key",
+        "api key not valid",
+        "accessnotconfigured",
+        "youtube data api",
+        "quotaexceeded",
+        "dailylimitexceeded",
+    ]
+    return any(k in text for k in fatal_keywords)
+
+
+def parse_channels(config: dict) -> tuple[list[ChannelConfig], str | None]:
+    raw_channels = config.get("channels")
+    if raw_channels is None:
+        return [], "Config error: 'channels' is required."
+    if not isinstance(raw_channels, list) or len(raw_channels) == 0:
+        return [], "Config error: 'channels' must be a non-empty list."
+
+    channels: list[ChannelConfig] = []
+    for idx, c in enumerate(raw_channels, start=1):
+        if not isinstance(c, dict):
+            return [], f"Config error: channels[{idx}] must be an object with 'name' and 'url'."
+        name = c.get("name")
+        url = c.get("url")
+        if not name:
+            return [], f"Config error: channels[{idx}].name is required."
+        if not url:
+            return [], f"Config error: channels[{idx}].url is required."
+        channels.append(ChannelConfig(name=name, url=url))
+    return channels, None
 
 
 def main() -> int:
@@ -52,11 +88,16 @@ def main() -> int:
         error(f"Config file not found: {config_path}")
         return 1
 
+    channels, config_error = parse_channels(config)
+    if config_error:
+        error(config_error)
+        return 1
+
     settings = config.get("settings", {})
-    channels = [ChannelConfig(**c) for c in config.get("channels", [])]
     client = YouTubeClient(api_key=api_key)
 
     threshold = int(settings.get("shorts_duration_threshold_sec", 180))
+    exclude_shorts = bool(settings.get("exclude_shorts", True))
     include_active_live = bool(settings.get("include_active_live", True))
     include_upcoming_live = bool(settings.get("include_upcoming_live", True))
     max_pages = settings.get("max_pages")
@@ -65,6 +106,7 @@ def main() -> int:
     all_urls: list[str] = []
     debug_rows: list[dict] = []
     seen_ids: set[str] = set()
+    had_api_error = False
 
     for channel in channels:
         info(f"Resolve channel: {channel.url}")
@@ -93,7 +135,11 @@ def main() -> int:
             else:
                 channel_data = client.get_channel_content_details(handle=ref.value)
         except YouTubeApiError as e:
-            error(f"Failed to resolve channel {channel.url}: {e}")
+            error(f"Failed to resolve channel {channel.url}: endpoint={e.endpoint} reason={e}")
+            if is_fatal_api_error(e):
+                error("Fatal API error detected. Stop entire process.")
+                return 1
+            had_api_error = True
             debug_rows.append({"channel_name": channel.name, "channel_url": channel.url, "video_id": "", "url": "", "raw_duration": "", "duration_sec": "", "live_broadcast_content": "", "included": False, "excluded_reason": "channel_not_found"})
             continue
 
@@ -117,7 +163,11 @@ def main() -> int:
             try:
                 page_data = client.get_playlist_items(uploads_id, page_token=page_token)
             except YouTubeApiError as e:
-                error(f"Failed playlist fetch for {channel.url}: {e}")
+                error(f"Failed playlist fetch for {channel.url}: endpoint={e.endpoint} reason={e}")
+                if is_fatal_api_error(e):
+                    error("Fatal API error detected. Stop entire process.")
+                    return 1
+                had_api_error = True
                 break
 
             for it in page_data.get("items", []):
@@ -143,7 +193,11 @@ def main() -> int:
             try:
                 detail_data = client.get_videos_details(batch)
             except YouTubeApiError as e:
-                error(f"Failed video details fetch for batch={idx}: {e}")
+                error(f"Failed video details fetch for batch={idx}: endpoint={e.endpoint} reason={e}")
+                if is_fatal_api_error(e):
+                    error("Fatal API error detected. Stop entire process.")
+                    return 1
+                had_api_error = True
                 for vid in batch:
                     debug_rows.append({"channel_name": channel.name, "channel_url": channel.url, "video_id": vid, "url": f"https://www.youtube.com/watch?v={vid}", "raw_duration": "", "duration_sec": "", "live_broadcast_content": "", "included": False, "excluded_reason": "api_video_not_found"})
                 continue
@@ -166,6 +220,7 @@ def main() -> int:
                     shorts_duration_threshold_sec=threshold,
                     include_active_live=include_active_live,
                     include_upcoming_live=include_upcoming_live,
+                    exclude_shorts=exclude_shorts,
                 )
 
                 if included and vid not in seen_ids:
@@ -188,6 +243,10 @@ def main() -> int:
     excluded_count = len([r for r in debug_rows if not r.get("included")])
     info(f"Included URLs: {included_count}")
     info(f"Excluded videos: {excluded_count}")
+
+    if had_api_error and included_count == 0:
+        error("Export failed: API error occurred and no URLs were collected.")
+        return 1
 
     out_txt = settings.get("output_txt", "data/output/notebooklm_urls.txt")
     out_csv = settings.get("output_csv", "data/output/notebooklm_urls.csv")

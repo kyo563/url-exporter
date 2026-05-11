@@ -8,7 +8,11 @@ BASE_URL = "https://www.googleapis.com/youtube/v3"
 
 
 class YouTubeApiError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, status_code: int | None = None, endpoint: str = "", response_text: str = "") -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.endpoint = endpoint
+        self.response_text = response_text
 
 
 @dataclass
@@ -19,10 +23,21 @@ class YouTubeClient:
     def _request(self, endpoint: str, params: dict) -> dict:
         url = f"{BASE_URL}/{endpoint}"
         full_params = {**params, "key": self.api_key}
-        resp = requests.get(url, params=full_params, timeout=self.timeout)
+        try:
+            resp = requests.get(url, params=full_params, timeout=self.timeout)
+        except requests.RequestException as e:
+            raise YouTubeApiError(
+                f"YouTube API request failed: endpoint={endpoint} reason={e}",
+                endpoint=endpoint,
+                response_text=str(e),
+            ) from e
+
         if resp.status_code >= 400:
             raise YouTubeApiError(
-                f"YouTube API error: status={resp.status_code} endpoint={endpoint} response={resp.text}"
+                f"YouTube API error: status={resp.status_code} endpoint={endpoint}",
+                status_code=resp.status_code,
+                endpoint=endpoint,
+                response_text=resp.text,
             )
         return resp.json()
 
