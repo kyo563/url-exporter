@@ -37,6 +37,7 @@ settings:
   shorts_duration_threshold_sec: 180
   include_active_live: true
   include_upcoming_live: true
+  fail_on_partial_api_error: true
   max_pages: null
   max_items: null
 ```
@@ -46,6 +47,10 @@ settings:
 - `https://www.youtube.com/channel/UC...`
 
 未対応URL（`/c/...`, `/user/...`）はエラーにします。
+
+`settings.fail_on_partial_api_error`:
+- `true`（推奨）: API途中失敗時に不完全なURL一覧を出力しない。
+- `false`: API失敗があっても取得済みの部分出力を許可（調査・一時運用向け）。
 
 ## ローカル実行
 ```bash

@@ -10,5 +10,6 @@ settings:
   shorts_duration_threshold_sec: 180
   include_active_live: true
   include_upcoming_live: true
+  fail_on_partial_api_error: true
   max_pages: null
   max_items: null
