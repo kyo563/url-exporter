@@ -11,10 +11,15 @@ def should_include_video(
 ) -> tuple[bool, str]:
     live_state = (live_broadcast_content or "none").lower()
 
-    if live_state == "live" and include_active_live:
-        return True, ""
-    if live_state == "upcoming" and include_upcoming_live:
-        return True, ""
+    if live_state == "live":
+        if include_active_live:
+            return True, ""
+        return False, "active_live_excluded"
+
+    if live_state == "upcoming":
+        if include_upcoming_live:
+            return True, ""
+        return False, "upcoming_live_excluded"
 
     if duration_sec is None:
         return False, "duration_missing"
