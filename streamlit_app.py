@@ -158,21 +158,17 @@ def fetch_urls_for_channel(
     return urls, debug_rows, stats
 
 
-st.set_page_config(page_title="YouTube URL Exporter for NotebookLM")
-st.title("YouTube URL Exporter for NotebookLM")
-st.write("YouTubeチャンネルURLから、NotebookLMに貼り付けやすい動画URL一覧を生成します。通常動画とLIVE配信アーカイブを対象とし、Shorts相当の短尺動画を除外できます。")
+st.set_page_config(page_title="YouTube URL Exporter")
 
 channel_url = st.text_input("YouTubeチャンネルURL", placeholder="https://www.youtube.com/@handle")
-st.caption("対応形式: https://www.youtube.com/@handle / https://www.youtube.com/channel/UC...")
-channel_name = st.text_input("チャンネル名（任意）", value="")
-exclude_shorts = st.checkbox("Shorts相当を除外", value=True)
-shorts_threshold = st.number_input("Shorts判定秒数", min_value=1, max_value=600, value=180, step=1)
-include_active_live = st.checkbox("進行中LIVEを含める", value=True)
-include_upcoming_live = st.checkbox("予約LIVEを含める", value=True)
-max_pages = st.number_input("最大取得ページ数", min_value=0, max_value=1000, value=5, step=1)
-st.caption("初回は5ページ推奨。0は無制限です。")
-max_items = st.number_input("最大取得件数", min_value=0, max_value=100000, value=250, step=1)
-st.caption("初回は250件程度を推奨。0は無制限です。")
+
+channel_name = "streamlit_input"
+exclude_shorts = True
+shorts_threshold = 180
+include_active_live = False
+include_upcoming_live = False
+max_pages = 0
+max_items = 0
 
 if st.button("URL一覧を生成"):
     api_key = get_api_key()
@@ -184,13 +180,11 @@ if st.button("URL一覧を生成"):
         st.error("YouTubeチャンネルURLを入力してください。")
         st.stop()
 
-    effective_name = channel_name.strip() or "streamlit_input"
-
     try:
         urls, debug_rows, stats = fetch_urls_for_channel(
             api_key=api_key,
             channel_url=channel_url.strip(),
-            channel_name=effective_name,
+            channel_name=channel_name,
             exclude_shorts=exclude_shorts,
             shorts_duration_threshold_sec=int(shorts_threshold),
             include_active_live=include_active_live,

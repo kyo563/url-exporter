@@ -4,8 +4,9 @@ YouTubeチャンネルURLから、NotebookLMに貼り付けやすいYouTube動�
 
 ## 目的
 - NotebookLM投入用URL一覧（TXT/CSV）を作成する。
-- 通常動画とLIVE関連（アーカイブ/進行中/予約）を対象にする。
-- Shorts完全判定は行わず、通常動画のうち3分以下を実用上除外する。
+- 通常動画と終了済みLIVEアーカイブをNotebookLM投入対象にする。
+- Shorts相当（3分以下）の動画は除外する。
+- 進行中LIVE・予約LIVEは文字起こし情報がないため除外する。
 
 ## 技術方針
 - YouTube Data API v3のみを使用。
@@ -85,10 +86,11 @@ python -m scripts.export_urls
 - `unsupported_url`
 - `channel_not_found`
 
-## Shorts除外仕様
-- `duration_sec > 180` は採用。
-- ただし `live` / `upcoming` は長さ不明でも採用。
-- `duration_sec <= 180` の通常動画はShorts相当として除外。
+## フィルタ仕様
+- `exclude_shorts=true` で固定し、`duration_sec <= 180` は除外。
+- `live`（進行中LIVE）は常に除外。
+- `upcoming`（予約LIVE）は常に除外。
+- 通常動画で `duration` が取れない場合は除外。
 
 ## Streamlit Cloudで使う
 1. Streamlit Cloudで新規アプリを作成。
@@ -102,6 +104,9 @@ YOUTUBE_API_KEY = "YOUR_API_KEY"
 ```
 
 補足:
+- Streamlit UIの画面入力は **YouTubeチャンネルURLのみ** です。
+- 取得条件は画面で選択できません（固定値: `channel_name=streamlit_input`, `exclude_shorts=true`, `shorts_duration_threshold_sec=180`, `include_active_live=false`, `include_upcoming_live=false`, `max_pages=0`, `max_items=0`）。
+- そのためNotebookLM投入対象は、通常動画と終了済みLIVEアーカイブのみです。
 - Streamlit UIは `config/channels.yml` を使わず、画面入力で1チャンネルを処理します。
 - APIキーは `st.secrets["YOUTUBE_API_KEY"]` を優先し、なければ環境変数 `YOUTUBE_API_KEY` を参照します。
 - UIはファイル保存せず、画面表示とダウンロード（TXT/CSV/debug CSV）のみ行います。
