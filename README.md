@@ -89,3 +89,19 @@ python -m scripts.export_urls
 - `duration_sec > 180` は採用。
 - ただし `live` / `upcoming` は長さ不明でも採用。
 - `duration_sec <= 180` の通常動画はShorts相当として除外。
+
+## Streamlit Cloudで使う
+1. Streamlit Cloudで新規アプリを作成。
+2. Repository: `kyo563/url-exporter`
+3. Branch: `main`
+4. Main file path: `streamlit_app.py`
+5. Streamlit Secretsに以下を設定。
+
+```toml
+YOUTUBE_API_KEY = "YOUR_API_KEY"
+```
+
+補足:
+- Streamlit UIは `config/channels.yml` を使わず、画面入力で1チャンネルを処理します。
+- APIキーは `st.secrets["YOUTUBE_API_KEY"]` を優先し、なければ環境変数 `YOUTUBE_API_KEY` を参照します。
+- UIはファイル保存せず、画面表示とダウンロード（TXT/CSV/debug CSV）のみ行います。
