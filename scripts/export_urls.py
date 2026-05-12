@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import yaml
 
-from scripts.channel_resolver import ChannelUrlError, parse_channel_url
+from scripts.input_resolver import InputResolveError, resolve_input
 from scripts.duration import parse_iso8601_duration_to_seconds
 from scripts.filters import should_include_video
 from scripts.writers import write_debug_csv, write_txt, write_url_csv
@@ -126,80 +126,77 @@ def main() -> int:
     for channel in channels:
         info(f"Resolve channel: {channel.url}")
         try:
-            ref = parse_channel_url(channel.url)
-        except ChannelUrlError as e:
+            resolved = resolve_input(channel.url)
+        except InputResolveError as e:
             error(str(e))
-            debug_rows.append(
-                {
-                    "channel_name": channel.name,
-                    "channel_url": channel.url,
-                    "video_id": "",
-                    "url": "",
-                    "raw_duration": "",
-                    "duration_sec": "",
-                    "live_broadcast_content": "",
-                    "included": False,
-                    "excluded_reason": "unsupported_url",
-                }
-            )
+            debug_rows.append({"channel_name": channel.name, "channel_url": channel.url, "video_id": "", "url": "", "raw_duration": "", "duration_sec": "", "live_broadcast_content": "", "included": False, "excluded_reason": "unsupported_url"})
             continue
 
+        video_ids: list[str] = []
         try:
-            if ref.kind == "channel_id":
-                channel_data = client.get_channel_content_details(channel_id=ref.value)
+            if resolved.kind == "playlist":
+                page_token = None
+                page = 0
+                while True:
+                    page += 1
+                    info(f"Fetch playlist items: page={page}")
+                    page_data = client.get_playlist_items(resolved.id, page_token=page_token)
+                    for it in page_data.get("items", []):
+                        vid = it.get("contentDetails", {}).get("videoId")
+                        if vid:
+                            video_ids.append(vid)
+                            if max_items is not None and len(video_ids) >= int(max_items):
+                                break
+                    if max_items is not None and len(video_ids) >= int(max_items):
+                        break
+                    if max_pages is not None and page >= int(max_pages):
+                        break
+                    page_token = page_data.get("nextPageToken")
+                    if not page_token:
+                        break
             else:
-                channel_data = client.get_channel_content_details(handle=ref.value)
+                if resolved.id.startswith("@"):
+                    channel_data = client.get_channel_content_details(handle=resolved.id[1:])
+                else:
+                    channel_data = client.get_channel_content_details(channel_id=resolved.id)
+
+                items = channel_data.get("items", [])
+                if not items:
+                    error(f"Channel not found: {channel.url}")
+                    debug_rows.append({"channel_name": channel.name, "channel_url": channel.url, "video_id": "", "url": "", "raw_duration": "", "duration_sec": "", "live_broadcast_content": "", "included": False, "excluded_reason": "channel_not_found"})
+                    continue
+
+                uploads_id = items[0].get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
+                if not uploads_id:
+                    error(f"Uploads playlist not found: {channel.url}")
+                    continue
+
+                page = 0
+                page_token = None
+                while True:
+                    page += 1
+                    info(f"Fetch uploads playlist items: page={page}")
+                    page_data = client.get_playlist_items(uploads_id, page_token=page_token)
+                    for it in page_data.get("items", []):
+                        vid = it.get("contentDetails", {}).get("videoId")
+                        if vid:
+                            video_ids.append(vid)
+                            if max_items is not None and len(video_ids) >= int(max_items):
+                                break
+                    if max_items is not None and len(video_ids) >= int(max_items):
+                        break
+                    if max_pages is not None and page >= int(max_pages):
+                        break
+                    page_token = page_data.get("nextPageToken")
+                    if not page_token:
+                        break
         except YouTubeApiError as e:
-            error(f"Failed to resolve channel {channel.url}: endpoint={e.endpoint} reason={e}")
+            error(f"Failed to fetch for {channel.url}: endpoint={e.endpoint} reason={e}")
             if is_fatal_api_error(e):
                 error("Fatal API error detected. Stop entire process.")
                 return 1
             had_api_error = True
-            debug_rows.append({"channel_name": channel.name, "channel_url": channel.url, "video_id": "", "url": "", "raw_duration": "", "duration_sec": "", "live_broadcast_content": "", "included": False, "excluded_reason": "channel_not_found"})
             continue
-
-        items = channel_data.get("items", [])
-        if not items:
-            error(f"Channel not found: {channel.url}")
-            debug_rows.append({"channel_name": channel.name, "channel_url": channel.url, "video_id": "", "url": "", "raw_duration": "", "duration_sec": "", "live_broadcast_content": "", "included": False, "excluded_reason": "channel_not_found"})
-            continue
-
-        uploads_id = items[0].get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
-        if not uploads_id:
-            error(f"Uploads playlist not found: {channel.url}")
-            continue
-
-        page = 0
-        page_token = None
-        video_ids: list[str] = []
-        while True:
-            page += 1
-            info(f"Fetch uploads playlist items: page={page}")
-            try:
-                page_data = client.get_playlist_items(uploads_id, page_token=page_token)
-            except YouTubeApiError as e:
-                error(f"Failed playlist fetch for {channel.url}: endpoint={e.endpoint} reason={e}")
-                if is_fatal_api_error(e):
-                    error("Fatal API error detected. Stop entire process.")
-                    return 1
-                had_api_error = True
-                break
-
-            for it in page_data.get("items", []):
-                vid = it.get("contentDetails", {}).get("videoId")
-                if vid:
-                    video_ids.append(vid)
-                    if max_items is not None and len(video_ids) >= int(max_items):
-                        break
-
-            if max_items is not None and len(video_ids) >= int(max_items):
-                break
-            if max_pages is not None and page >= int(max_pages):
-                break
-
-            page_token = page_data.get("nextPageToken")
-            if not page_token:
-                break
 
         info(f"Total video IDs fetched: {len(video_ids)}")
 
