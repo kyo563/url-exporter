@@ -66,6 +66,21 @@ class YouTubeClient:
             params["pageToken"] = page_token
         return self._request("playlistItems", params)
 
+
+    def list_playlist_video_urls(self, playlist_id: str) -> list[str]:
+        urls: list[str] = []
+        page_token: str | None = None
+        while True:
+            data = self.get_playlist_items(playlist_id, page_token=page_token)
+            for it in data.get("items", []):
+                video_id = it.get("contentDetails", {}).get("videoId")
+                if video_id:
+                    urls.append(f"https://www.youtube.com/watch?v={video_id}")
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+        return urls
+
     def get_videos_details(self, video_ids: list[str]) -> dict:
         params = {
             "part": "contentDetails,snippet",

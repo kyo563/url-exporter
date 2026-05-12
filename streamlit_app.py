@@ -6,7 +6,7 @@ import os
 
 import streamlit as st
 
-from scripts.channel_resolver import ChannelUrlError, parse_channel_url
+from scripts.input_resolver import InputResolveError, resolve_input
 from scripts.duration import parse_iso8601_duration_to_seconds
 from scripts.export_urls import chunked, is_fatal_api_error
 from scripts.filters import should_include_video
@@ -54,7 +54,7 @@ def build_debug_csv(rows: list[dict]) -> str:
     return _write_csv(rows, fields)
 
 
-def fetch_urls_for_channel(
+def fetch_urls_for_input(
     *,
     api_key: str,
     channel_url: str,
@@ -71,26 +71,31 @@ def fetch_urls_for_channel(
     seen_ids: set[str] = set()
     urls: list[str] = []
 
-    ref = parse_channel_url(channel_url)
-    if ref.kind == "channel_id":
-        channel_data = client.get_channel_content_details(channel_id=ref.value)
-    else:
-        channel_data = client.get_channel_content_details(handle=ref.value)
+    resolved = resolve_input(channel_url)
 
-    items = channel_data.get("items", [])
-    if not items:
-        raise RuntimeError("channel_not_found")
-
-    uploads_id = items[0].get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
-    if not uploads_id:
-        raise RuntimeError("uploads_playlist_not_found")
-
+    video_ids: list[str] = []
     page = 0
     page_token = None
-    video_ids: list[str] = []
+
+    if resolved.kind == "playlist":
+        playlist_id = resolved.id
+    else:
+        if resolved.id.startswith("@"):
+            channel_data = client.get_channel_content_details(handle=resolved.id[1:])
+        else:
+            channel_data = client.get_channel_content_details(channel_id=resolved.id)
+
+        items = channel_data.get("items", [])
+        if not items:
+            raise RuntimeError("channel_not_found")
+
+        playlist_id = items[0].get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
+        if not playlist_id:
+            raise RuntimeError("uploads_playlist_not_found")
+
     while True:
         page += 1
-        page_data = client.get_playlist_items(uploads_id, page_token=page_token)
+        page_data = client.get_playlist_items(playlist_id, page_token=page_token)
 
         for it in page_data.get("items", []):
             vid = it.get("contentDetails", {}).get("videoId")
@@ -181,7 +186,7 @@ if st.button("URL一覧を生成"):
         st.stop()
 
     try:
-        urls, debug_rows, stats = fetch_urls_for_channel(
+        urls, debug_rows, stats = fetch_urls_for_input(
             api_key=api_key,
             channel_url=channel_url.strip(),
             channel_name=channel_name,
@@ -192,7 +197,7 @@ if st.button("URL一覧を生成"):
             max_pages=int(max_pages),
             max_items=int(max_items),
         )
-    except ChannelUrlError as e:
+    except InputResolveError as e:
         st.error(f"未対応のURL形式です: {e}")
         st.stop()
     except YouTubeApiError as e:
